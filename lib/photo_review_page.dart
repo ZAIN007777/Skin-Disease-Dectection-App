@@ -2,7 +2,7 @@ import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
-import 'package:skin_guardian/skin_condition_result_page.dart';
+import 'package:skin_guardian/acne_recommendations_page.dart';
 
 class PhotoPreviewPage extends StatefulWidget {
   final File? image;
@@ -41,10 +41,11 @@ class _PhotoPreviewPageState extends State<PhotoPreviewPage> {
         const SnackBar(content: Text('Image uploaded successfully!')),
       );
 
+      // Navigate to AcneRecommendationPage with the uploaded image URL
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => SkinConditionResultsPage(imageUrl: downloadUrl, documentId: ''),
+          builder: (context) => AcneRecommendationPage(imageUrl: downloadUrl),
         ),
       );
     } catch (e) {
@@ -75,7 +76,7 @@ class _PhotoPreviewPageState extends State<PhotoPreviewPage> {
         backgroundColor: Colors.blueGrey.shade800,
         elevation: 4,
         shadowColor: Colors.black45,
-        iconTheme: const IconThemeData(color: Colors.white), // White back button
+        automaticallyImplyLeading: false, // This removes the back arrow
       ),
       body: SafeArea(
         child: Container(

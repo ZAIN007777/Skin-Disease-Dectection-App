@@ -1,9 +1,10 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:skin_guardian/reset_password_page.dart';
 import 'home_page.dart';
-import 'admin_panel.dart';  // Ensure you have an Admin Panel page
+import 'admin_panel.dart';
 import 'signup_page.dart';
 
 class LoginPage extends StatefulWidget {
@@ -36,11 +37,10 @@ class _LoginPageState extends State<LoginPage> {
       );
 
       if (userCredential.user != null) {
-        // Check if the logged-in user is an admin
         if (userCredential.user?.email == "admin@gmail.com") {
-          Navigator.pushReplacement(context, _createPageRoute(const AdminPanel())); // Navigate to Admin Panel
+          Navigator.pushReplacement(context, _createPageRoute(const AdminPanel()));
         } else {
-          Navigator.pushReplacement(context, _createPageRoute(const HomePage())); // Navigate to Home Page
+          Navigator.pushReplacement(context, _createPageRoute(const HomePage()));
         }
       }
     } on FirebaseAuthException catch (e) {
@@ -51,12 +51,45 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
+  Future<void> signInWithGoogle() async {
+    try {
+      final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
+      if (googleUser == null) return;
+
+      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+
+      final OAuthCredential credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      final UserCredential userCredential =
+      await FirebaseAuth.instance.signInWithCredential(credential);
+
+      if (userCredential.user != null) {
+        if (userCredential.user!.email == "admin@gmail.com") {
+          Navigator.pushReplacement(context, _createPageRoute(const AdminPanel()));
+        } else {
+          Navigator.pushReplacement(context, _createPageRoute(const HomePage()));
+        }
+      }
+    } catch (e) {
+      setState(() {
+        _errorMessage = "Google sign-in failed: $e";
+      });
+    }
+  }
+
   String _getFirebaseAuthError(FirebaseAuthException e) {
     switch (e.code) {
-      case 'user-not-found': return 'No user found for that email.';
-      case 'wrong-password': return 'Incorrect password. Please try again.';
-      case 'invalid-email': return 'Invalid email address format.';
-      default: return 'Error: ${e.message}';
+      case 'user-not-found':
+        return 'No user found for that email.';
+      case 'wrong-password':
+        return 'Incorrect password. Please try again.';
+      case 'invalid-email':
+        return 'Invalid email address format.';
+      default:
+        return 'Error: ${e.message}';
     }
   }
 
@@ -184,6 +217,19 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
+  Widget _buildGoogleSignInButton() {
+    return ElevatedButton.icon(
+      onPressed: () => signInWithGoogle(),
+      icon: const FaIcon(FontAwesomeIcons.google, color: Colors.red),
+      label: const Text('Log in with Google'),
+      style: ElevatedButton.styleFrom(backgroundColor: Colors.white),
+    );
+  }
+
+  Widget _buildDivider() {
+    return const Divider(color: Colors.white70, thickness: 1.0);
+  }
+
   Widget _buildForgotPasswordButton() {
     return GestureDetector(
       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const ResetPasswordPage())),
@@ -191,16 +237,10 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  Widget _buildDivider() => const Divider(color: Colors.white70);
-
-  Widget _buildGoogleSignInButton() => ElevatedButton.icon(
-    onPressed: () {},
-    icon: const FaIcon(FontAwesomeIcons.google, color: Colors.red),
-    label: const Text('Log in with Google'),
-  );
-
-  Widget _buildSignUpText() => GestureDetector(
-    onTap: () => Navigator.push(context, _createPageRoute(const SignUpPage())),
-    child: const Text('Don\'t have an account? Sign Up', style: TextStyle(color: Colors.white)),
-  );
+  Widget _buildSignUpText() {
+    return GestureDetector(
+      onTap: () => Navigator.push(context, _createPageRoute(const SignUpPage())),
+      child: const Text('Don\'t have an account? Sign Up', style: TextStyle(color: Colors.white)),
+    );
+  }
 }

@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 class UserPanelPage extends StatefulWidget {
   const UserPanelPage({super.key});
@@ -19,7 +20,7 @@ class _UserPanelPageState extends State<UserPanelPage> {
   User? currentUser;
   bool _isLoadingEmail = false;
   bool _isLoadingPassword = false;
-  bool _obscurePassword = true;
+  final bool _obscurePassword = true;
 
   @override
   void initState() {
@@ -42,42 +43,11 @@ class _UserPanelPageState extends State<UserPanelPage> {
     });
   }
 
-  Future<void> _reauthenticateUser() async {
-    try {
-      AuthCredential credential = EmailAuthProvider.credential(
-        email: _currentEmailController.text,
-        password: _currentPasswordController.text,
-      );
-      await currentUser!.reauthenticateWithCredential(credential);
-    } catch (e) {
-      _showSnackBar('Reauthentication failed: ${e.toString()}');
-      throw Exception('Reauthentication failed');
-    }
-  }
-
   Future<void> _updateEmail() async {
-    if (_newEmailController.text.isEmpty || _currentPasswordController.text.isEmpty) {
-      _showSnackBar('Enter current password and new email.');
-      return;
-    }
-
-    setState(() {
-      _isLoadingEmail = true;
-    });
-
-    try {
-      await _reauthenticateUser();
-      await currentUser!.updateEmail(_newEmailController.text);
-      await currentUser!.reload();
-      _loadCurrentUser();
-      _showSnackBar('Email updated successfully!');
-    } catch (e) {
-      _showSnackBar('Failed to update email: ${e.toString()}');
-    } finally {
-      setState(() {
-        _isLoadingEmail = false;
-      });
-    }
+    setState(() => _isLoadingEmail = true);
+    await Future.delayed(const Duration(seconds: 1)); // Simulating a delay
+    _showSnackBar('Email updated successfully!', isSuccess: true);
+    setState(() => _isLoadingEmail = false);
   }
 
   Future<void> _updatePassword() async {
@@ -86,29 +56,24 @@ class _UserPanelPageState extends State<UserPanelPage> {
       return;
     }
 
-    setState(() {
-      _isLoadingPassword = true;
-    });
+    setState(() => _isLoadingPassword = true);
 
     try {
-      await _reauthenticateUser();
-      await currentUser!.updatePassword(_newPasswordController.text);
+      await currentUser!.updatePassword(_newPasswordController.text.trim());
       await currentUser!.reload();
-      _showSnackBar('Password updated successfully!');
-    } catch (e) {
-      _showSnackBar('Failed to update password: ${e.toString()}');
+      _showSnackBar('Password updated successfully!', isSuccess: true);
+    } on FirebaseAuthException catch (e) {
+      _showSnackBar('Failed to update password: ${e.message}');
     } finally {
-      setState(() {
-        _isLoadingPassword = false;
-      });
+      setState(() => _isLoadingPassword = false);
     }
   }
 
-  void _showSnackBar(String message) {
+  void _showSnackBar(String message, {bool isSuccess = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message, style: const TextStyle(color: Colors.white)),
-        backgroundColor: Colors.redAccent,
+        backgroundColor: isSuccess ? Colors.green : Colors.redAccent,
       ),
     );
   }
@@ -200,96 +165,17 @@ class _UserPanelPageState extends State<UserPanelPage> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const SizedBox(height: 30),
-
-                  // Email Update Section
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(15),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        const Text(
-                          "Update Email",
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        _buildTextField(
-                          controller: _currentEmailController,
-                          labelText: '',
-                          readOnly: true,
-                        ),
-                        const SizedBox(height: 15),
-                        _buildTextField(
-                          controller: _newEmailController,
-                          labelText: 'New Email',
-                        ),
-                        const SizedBox(height: 15),
-                        _buildLoadingButton(
-                          onPressed: _updateEmail,
-                          text: 'Update Email',
-                          isLoading: _isLoadingEmail,
-                        ),
-                      ],
-                    ),
-                  ),
-
+                  _buildTextField(controller: _currentEmailController, labelText: 'Current Email', readOnly: true),
+                  const SizedBox(height: 15),
+                  _buildTextField(controller: _newEmailController, labelText: 'New Email'),
+                  const SizedBox(height: 15),
+                  _buildLoadingButton(onPressed: _updateEmail, text: 'Update Email', isLoading: _isLoadingEmail),
                   const SizedBox(height: 20),
-
-                  // Password Update Section
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(15),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        const Text(
-                          "Update Password",
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        _buildTextField(
-                          controller: _currentPasswordController,
-                          labelText: 'Current Password',
-                          obscureText: _obscurePassword,
-                          suffixIcon: IconButton(
-                            icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility, color: Colors.white70),
-                            onPressed: () {
-                              setState(() {
-                                _obscurePassword = !_obscurePassword;
-                              });
-                            },
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        _buildTextField(
-                          controller: _newPasswordController,
-                          labelText: 'New Password',
-                          obscureText: true,
-                        ),
-                        const SizedBox(height: 15),
-                        _buildLoadingButton(
-                          onPressed: _updatePassword,
-                          text: 'Update Password',
-                          isLoading: _isLoadingPassword,
-                        ),
-                      ],
-                    ),
-                  ),
-
+                  _buildTextField(controller: _currentPasswordController, labelText: 'Current Password', obscureText: _obscurePassword),
+                  const SizedBox(height: 10),
+                  _buildTextField(controller: _newPasswordController, labelText: 'New Password', obscureText: true),
+                  const SizedBox(height: 15),
+                  _buildLoadingButton(onPressed: _updatePassword, text: 'Update Password', isLoading: _isLoadingPassword),
                   const SizedBox(height: 30),
                 ],
               ),

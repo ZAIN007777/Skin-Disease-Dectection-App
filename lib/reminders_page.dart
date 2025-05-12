@@ -7,16 +7,19 @@ import 'package:timezone/timezone.dart' as tz;
 import 'dart:convert';
 import 'dart:async';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:uuid/uuid.dart';
 
 class Reminder {
+  String id;
   String title;
   DateTime dateTime;
 
-  Reminder({required this.title, required this.dateTime});
+  Reminder({required this.id, required this.title, required this.dateTime});
 
   // Convert a Reminder to a Map
   Map<String, dynamic> toMap() {
     return {
+      'id': id, // Include the ID in the map
       'title': title,
       'dateTime': dateTime.toIso8601String(),
     };
@@ -25,6 +28,7 @@ class Reminder {
   // Convert a Map to a Reminder
   static Reminder fromMap(Map<String, dynamic> map) {
     return Reminder(
+      id: map['id'], // Retrieve the ID from the map
       title: map['title'],
       dateTime: DateTime.parse(map['dateTime']),
     );
@@ -51,28 +55,81 @@ class _ReminderPageState extends State<ReminderPage> {
   @override
   void initState() {
     super.initState();
-    tz.initializeTimeZones(); // Ensure time zone is initialized
+    _initializeTimeZones();
     _initializeNotifications();
     _loadReminders();
+    _requestPermission();
+    _setupNotificationChannel();
     _startReminderExpiryTimer(); // Start the timer to check for expired reminders
+  }
+
+  void _initializeTimeZones() {
+    tz.initializeTimeZones();
+    // Try to get the local timezone instead of hardcoding it
+    try {
+      tz.setLocalLocation(tz.local);
+    } catch (e) {
+      // Fallback to a specific timezone if local detection fails
+      tz.setLocalLocation(tz.getLocation('Asia/Karachi'));
+      debugPrint("Fallback to 'Asia/Karachi' timezone: $e");
+    }
   }
 
   // Request permission for notifications
   Future<void> _requestPermission() async {
-    if (await Permission.notification.isDenied) {
-      await Permission.notification.request();
-    }
+    // Check current status
+    var status = await Permission.notification.status;
 
-    if (await Permission.notification.isGranted) {
-      print("Notification permission granted.");
+    if (status.isDenied) {
+      // Request permission
+      status = await Permission.notification.request();
+      if (status.isGranted) {
+        debugPrint("✅ Notification permission granted.");
+      } else {
+        debugPrint("❌ Notification permission denied.");
+      }
+    } else if (status.isPermanentlyDenied) {
+      // The user has previously denied the permission and instructed the OS to not ask again.
+      showDialog(
+        context: context,
+        builder: (BuildContext context) => AlertDialog(
+          title: const Text('Notification Permission Required'),
+          content: const Text(
+              'Please enable notifications for this app in your device settings.'),
+          actions: <Widget>[
+            TextButton(
+              child: const Text('OK'),
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+          ],
+        ),
+      );
+    } else if (status.isGranted) {
+      debugPrint("✅ Notification permission already granted.");
     }
   }
 
-  void _initializeNotifications() {
-    const InitializationSettings initializationSettings = InitializationSettings(
-        android: AndroidInitializationSettings('@mipmap/ic_launcher'));
-    flutterLocalNotificationsPlugin.initialize(initializationSettings,
-        onDidReceiveNotificationResponse: _onNotificationTap);
+  void _initializeNotifications() async {
+    const AndroidInitializationSettings androidInitSettings =
+    AndroidInitializationSettings('@mipmap/ic_launcher');
+
+    final InitializationSettings initSettings =
+    InitializationSettings(android: androidInitSettings);
+
+    try {
+      final bool? initialized = await flutterLocalNotificationsPlugin.initialize(
+        initSettings,
+        onDidReceiveNotificationResponse: _onNotificationTap,
+      );
+
+      if (initialized == true) {
+        debugPrint("✅ Notifications initialized successfully.");
+      } else {
+        debugPrint("❌ Notification initialization failed.");
+      }
+    } catch (e) {
+      debugPrint("❌ Notification initialization error: $e");
+    }
   }
 
   Future<void> _loadReminders() async {
@@ -80,14 +137,18 @@ class _ReminderPageState extends State<ReminderPage> {
     String? remindersString = prefs.getString('reminders');
 
     if (remindersString != null) {
-      List<dynamic> remindersJson = json.decode(remindersString);
-      setState(() {
-        _reminders = remindersJson
-            .map((jsonItem) => Reminder.fromMap(jsonItem))
-            .toList();
-      });
-      _removeExpiredReminders(); // Remove expired reminders when loading them
-      _scheduleNotifications(); // Schedule notifications for active reminders
+      try {
+        List<dynamic> remindersJson = json.decode(remindersString);
+        setState(() {
+          _reminders = remindersJson
+              .map((jsonItem) => Reminder.fromMap(jsonItem))
+              .toList();
+        });
+        _removeExpiredReminders(); // Remove expired reminders when loading them
+        _scheduleNotifications(); // Schedule notifications for active reminders
+      } catch (e) {
+        debugPrint("❌ Error loading reminders: $e");
+      }
     }
   }
 
@@ -99,35 +160,81 @@ class _ReminderPageState extends State<ReminderPage> {
     prefs.setString('reminders', remindersString);
   }
 
-  Future<void> _showNotification(Reminder reminder) async {
-    await _requestPermission(); // Request notification permission first
+  Future<void> _checkPendingNotifications() async {
+    final List<PendingNotificationRequest> pendingNotifications =
+    await flutterLocalNotificationsPlugin.pendingNotificationRequests();
 
-    const androidDetails = AndroidNotificationDetails(
+    debugPrint("📢 Pending Notifications: ${pendingNotifications.length}");
+    for (var notification in pendingNotifications) {
+      debugPrint("🆔 ID: ${notification.id}, Title: ${notification.title}");
+    }
+  }
+
+  Future<void> _showNotification(Reminder reminder) async {
+    // If the date is in the past, don't schedule
+    if (reminder.dateTime.isBefore(DateTime.now())) {
+      debugPrint("⏭️ Skipping past notification for: ${reminder.title}");
+      return;
+    }
+
+    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
       'reminder_channel',
       'Reminders',
       channelDescription: 'Channel for reminder notifications',
-      importance: Importance.max,
+      importance: Importance.high,
       priority: Priority.high,
+      playSound: true,
       enableVibration: true,
-      sound: RawResourceAndroidNotificationSound('notification_sound'),
     );
 
-    const notificationDetails = NotificationDetails(android: androidDetails);
+    const NotificationDetails notificationDetails =
+    NotificationDetails(android: androidDetails);
 
-    // Convert the reminder's DateTime to the correct timezone
-    tz.TZDateTime scheduledTime =
-    tz.TZDateTime.from(reminder.dateTime, tz.local);
+    // Convert to the correct time zone
+    final tz.TZDateTime scheduledTime = tz.TZDateTime.from(reminder.dateTime, tz.local);
 
-    await flutterLocalNotificationsPlugin.zonedSchedule(
-      0,
-      reminder.title,
-      'Time to check your skin!',
-      scheduledTime,
-      notificationDetails,
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-      uiLocalNotificationDateInterpretation:
-      UILocalNotificationDateInterpretation.absoluteTime,
-    );
+    debugPrint("📅 Scheduling notification at: ${scheduledTime.toString()}");
+    debugPrint("🆔 Notification ID: ${reminder.id.hashCode}");
+    debugPrint("🔔 Reminder Title: ${reminder.title}");
+
+    try {
+      await flutterLocalNotificationsPlugin.zonedSchedule(
+        reminder.id.hashCode,
+        reminder.title,
+        '⏰ Reminder Time: ${DateFormat.jm().format(reminder.dateTime)}',
+        scheduledTime,
+        notificationDetails,
+        androidScheduleMode: AndroidScheduleMode.exact,
+        uiLocalNotificationDateInterpretation:
+        UILocalNotificationDateInterpretation.absoluteTime,
+        payload: reminder.id,
+      );
+
+      debugPrint("✅ Notification successfully scheduled!");
+    } catch (e) {
+      debugPrint("❌ Notification scheduling failed: $e");
+    }
+  }
+
+  // FIXED: This function was incorrectly implemented
+  void _scheduleNotifications() {
+    // Cancel previous notifications to prevent duplicates
+    flutterLocalNotificationsPlugin.cancelAll().then((_) {
+      debugPrint("🗑️ Cleared all previous notifications!");
+
+      // Schedule new notifications only for future reminders
+      for (Reminder reminder in _reminders) {
+        if (reminder.dateTime.isAfter(DateTime.now())) {
+          _showNotification(reminder);
+          debugPrint("Scheduling notification for: ${reminder.title} at ${reminder.dateTime}");
+        } else {
+          debugPrint("Skipping expired reminder: ${reminder.title}");
+        }
+      }
+
+      // Check which notifications are actually scheduled
+      _checkPendingNotifications();
+    });
   }
 
   void _onNotificationTap(NotificationResponse notificationResponse) {
@@ -135,7 +242,7 @@ class _ReminderPageState extends State<ReminderPage> {
     String? payload = notificationResponse.payload;
     if (payload != null) {
       setState(() {
-        _reminders.removeWhere((reminder) => reminder.title == payload);
+        _reminders.removeWhere((reminder) => reminder.id == payload);
       });
       _saveReminders(); // Save the updated reminder list
     }
@@ -182,7 +289,20 @@ class _ReminderPageState extends State<ReminderPage> {
       _selectedTime.minute,
     );
 
+    // Don't allow setting reminders in the past
+    if (reminderDateTime.isBefore(DateTime.now())) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Cannot set reminder for past time'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    const uuid = Uuid();
     final reminder = Reminder(
+      id: uuid.v4(), // Generate a unique ID
       title: _titleController.text,
       dateTime: reminderDateTime,
     );
@@ -195,19 +315,28 @@ class _ReminderPageState extends State<ReminderPage> {
     _scheduleNotifications(); // Schedule notifications for active reminders
     _titleController.clear();
     FocusScope.of(context).unfocus();
+
+    // Show confirmation
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Reminder set for ${DateFormat.yMMMd().add_jm().format(reminderDateTime)}'),
+        backgroundColor: Colors.green,
+      ),
+    );
   }
 
   void _removeExpiredReminders() {
     final now = DateTime.now();
-    _reminders.removeWhere((reminder) => reminder.dateTime.isBefore(now));
-    _saveReminders(); // Save updated reminders list after removing expired ones
-  }
+    final previousCount = _reminders.length;
 
-  void _scheduleNotifications() {
-    for (Reminder reminder in _reminders) {
-      if (reminder.dateTime.isAfter(DateTime.now())) {
-        _showNotification(reminder); // Schedule the notification if the reminder is active
-      }
+    setState(() {
+      _reminders.removeWhere((reminder) => reminder.dateTime.isBefore(now));
+    });
+
+    final removedCount = previousCount - _reminders.length;
+    if (removedCount > 0) {
+      debugPrint("Removed $removedCount expired reminders");
+      _saveReminders(); // Save updated reminders list after removing expired ones
     }
   }
 
@@ -215,13 +344,33 @@ class _ReminderPageState extends State<ReminderPage> {
     // Check every minute if there are any expired reminders
     _reminderExpiryTimer = Timer.periodic(const Duration(minutes: 1), (timer) {
       _removeExpiredReminders();
-      _scheduleNotifications(); // Reschedule notifications for active reminders
+      // No need to reschedule here - it will create too many notifications
     });
+  }
+
+  void _setupNotificationChannel() async {
+    const AndroidNotificationChannel channel = AndroidNotificationChannel(
+      'reminder_channel',
+      'Reminders',
+      description: 'Channel for reminder notifications',
+      importance: Importance.high,
+    );
+
+    try {
+      await flutterLocalNotificationsPlugin
+          .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>()
+          ?.createNotificationChannel(channel);
+      debugPrint("✅ Notification channel created successfully.");
+    } catch (e) {
+      debugPrint("❌ Error creating notification channel: $e");
+    }
   }
 
   @override
   void dispose() {
     _reminderExpiryTimer.cancel(); // Stop the timer when the page is disposed
+    _titleController.dispose(); // Dispose the text controller
     super.dispose();
   }
 
@@ -239,6 +388,18 @@ class _ReminderPageState extends State<ReminderPage> {
         shadowColor: Colors.black45,
         centerTitle: true,
         iconTheme: const IconThemeData(color: Colors.white),
+        actions: [
+          // Add a manual refresh button for debugging
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () {
+              _scheduleNotifications();
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Notifications refreshed')),
+              );
+            },
+          ),
+        ],
       ),
       body: Container(
         decoration: BoxDecoration(
@@ -327,6 +488,16 @@ class _ReminderPageState extends State<ReminderPage> {
                               .format(reminder.dateTime),
                           style: const TextStyle(color: Colors.white70),
                         ),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.delete, color: Colors.red),
+                          onPressed: () {
+                            setState(() {
+                              _reminders.removeAt(index);
+                            });
+                            _saveReminders();
+                            _scheduleNotifications();
+                          },
+                        ),
                       ),
                     );
                   },
@@ -387,6 +558,7 @@ class _ReminderPageState extends State<ReminderPage> {
 }
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const MaterialApp(
     home: ReminderPage(),
   ));

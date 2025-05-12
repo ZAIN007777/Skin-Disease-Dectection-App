@@ -8,7 +8,7 @@ class ScanSkinConditionPage extends StatefulWidget {
   const ScanSkinConditionPage({super.key});
 
   @override
-  _ScanSkinConditionPageState createState() => _ScanSkinConditionPageState();
+  createState() => _ScanSkinConditionPageState();
 }
 
 class _ScanSkinConditionPageState extends State<ScanSkinConditionPage> {
@@ -139,7 +139,7 @@ class _ScanSkinConditionPageState extends State<ScanSkinConditionPage> {
       {"icon": Icons.fullscreen, "text": "Capture the full affected area."},
       {"icon": Icons.flash_off, "text": "Avoid using flash."},
       {"icon": Icons.panorama, "text": "Take multiple shots for accuracy."},
-      {"icon": Icons.content_cut, "text": "Make sure no obstructions like hair or clothing are in the way."},
+      {"icon": Icons.content_cut, "text": "Make sure no obstructions like clothing are in the way."},
     ];
 
     return instructions

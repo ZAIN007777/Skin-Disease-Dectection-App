@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'login_page.dart'; // Add your LoginPage import
 
 class AddUserPage extends StatefulWidget {
   const AddUserPage({super.key});
@@ -28,6 +29,20 @@ class _AddUserPageState extends State<AddUserPage> {
     }
 
     try {
+      // Check if the user is authenticated
+      User? user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        // If not authenticated, redirect to login page
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('You must be logged in to add a user')),
+        );
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const LoginPage()),
+        );
+        return;
+      }
+
       // Create user in Firebase Auth
       final UserCredential userCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
         email: email,

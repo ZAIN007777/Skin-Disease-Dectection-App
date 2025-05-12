@@ -1,10 +1,12 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
-import 'package:skin_guardian/login_page.dart';
-import 'package:skin_guardian/home_page.dart';
-import 'package:skin_guardian/admin_panel.dart';
-import 'package:skin_guardian/firebase_options.dart';
+
+import 'admin_panel.dart';
+import 'firebase_options.dart';
+import 'home_page.dart';
+import 'login_page.dart';
 
 class AuthPage extends StatefulWidget {
   const AuthPage({super.key});
@@ -14,7 +16,7 @@ class AuthPage extends StatefulWidget {
 }
 
 class _AuthPageState extends State<AuthPage> {
-  bool _isLoading = true; // Loading state
+  final bool _isLoading = true;
 
   @override
   void initState() {
@@ -23,44 +25,45 @@ class _AuthPageState extends State<AuthPage> {
   }
 
   Future<void> _initializeFirebase() async {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
-
-    FirebaseAuth.instance.authStateChanges().listen((User? user) {
-      setState(() {
-        _isLoading = false; // Stop loading
-
-        if (user != null) {
-          // Check if the logged-in user is an admin
-          if (user.email == "admin@example.com") {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => const AdminPanel()),
-            );
-          } else {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => const HomePage()),
-            );
-          }
-        } else {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => const LoginPage()),
-          );
-        }
-      });
-    });
+    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Center(
-        child: _isLoading
-            ? const CircularProgressIndicator()
-            : const LoginPage(),
+      body: StreamBuilder<User?>(
+        stream: FirebaseAuth.instance.authStateChanges(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          // If there's no user, navigate to the LoginPage
+          if (!snapshot.hasData) {
+            return const LoginPage();
+          }
+
+          // If the user is authenticated, check if the user is an admin or not
+          User user = snapshot.data!;
+          return FutureBuilder<DocumentSnapshot>(
+            future: FirebaseFirestore.instance.collection('users').doc(user.uid).get(),
+            builder: (context, userDocSnapshot) {
+              if (userDocSnapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+
+              if (userDocSnapshot.hasError) {
+                print("Error fetching user data: ${userDocSnapshot.error}");
+                return const LoginPage();
+              }
+
+              bool isAdmin = userDocSnapshot.data?.exists == true && (userDocSnapshot.data?['isAdmin'] ?? false);
+
+              // Navigate to the respective page based on admin status
+              return isAdmin ? const AdminPanel() : const HomePage();
+            },
+          );
+        },
       ),
     );
   }

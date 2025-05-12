@@ -5,6 +5,7 @@ import 'package:skin_guardian/reminders_page.dart';
 import 'login_page.dart';
 import 'scan_skin_condition_page.dart';
 import 'user_panel_page.dart';
+import 'insights_chatbot_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -131,7 +132,8 @@ class _HomePageState extends State<HomePage> {
                       _buildDashboardCard(
                         label: 'Skin Insights',
                         icon: Icons.lightbulb,
-                        onPressed: () {},
+                        onPressed: () {
+                        },
                         color: Colors.orange.shade600,
                       ),
                       _buildDashboardCard(
