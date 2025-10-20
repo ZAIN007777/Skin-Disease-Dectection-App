@@ -5,7 +5,7 @@ import 'package:skin_guardian/reminders_page.dart';
 import 'login_page.dart';
 import 'scan_skin_condition_page.dart';
 import 'user_panel_page.dart';
-import 'insights_chatbot_page.dart';
+//import 'insights_chatbot_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});

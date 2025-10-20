@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'admin_panel.dart';
@@ -53,11 +54,21 @@ class _AuthPageState extends State<AuthPage> {
               }
 
               if (userDocSnapshot.hasError) {
-                print("Error fetching user data: ${userDocSnapshot.error}");
+                if (kDebugMode) {
+                  print("Error fetching user data: ${userDocSnapshot.error}");
+                }
                 return const LoginPage();
               }
 
-              bool isAdmin = userDocSnapshot.data?.exists == true && (userDocSnapshot.data?['isAdmin'] ?? false);
+              if (!userDocSnapshot.hasData || !userDocSnapshot.data!.exists) {
+                // If the user document doesn’t exist, go to HomePage
+                return const HomePage();
+              }
+
+              final data = userDocSnapshot.data!.data() as Map<String, dynamic>?;
+
+              // Safely read 'isAdmin' field (default to false if missing)
+              bool isAdmin = data?['isAdmin'] == true;
 
               // Navigate to the respective page based on admin status
               return isAdmin ? const AdminPanel() : const HomePage();
